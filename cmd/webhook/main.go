@@ -1,0 +1,92 @@
+package main
+
+import (
+	"log"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/thomasvincent/github-runners-infra/internal/digitalocean"
+	gh "github.com/thomasvincent/github-runners-infra/internal/github"
+	"github.com/thomasvincent/github-runners-infra/internal/webhook"
+)
+
+func main() {
+	appID, err := strconv.ParseInt(mustEnv("GITHUB_APP_ID"), 10, 64)
+	if err != nil {
+		log.Fatalf("Invalid GITHUB_APP_ID: %v", err)
+	}
+
+	installID, err := strconv.ParseInt(mustEnv("GITHUB_INSTALLATION_ID"), 10, 64)
+	if err != nil {
+		log.Fatalf("Invalid GITHUB_INSTALLATION_ID: %v", err)
+	}
+
+	privateKey := []byte(mustEnv("GITHUB_APP_PRIVATE_KEY"))
+	webhookSecret := []byte(mustEnv("GITHUB_WEBHOOK_SECRET"))
+	doToken := mustEnv("DIGITALOCEAN_TOKEN")
+
+	cloudInitPath := envOrDefault("CLOUD_INIT_PATH", "cloud-init/runner.yaml.tmpl")
+	region := envOrDefault("DO_REGION", "nyc3")
+	size := envOrDefault("DO_SIZE", "s-4vcpu-8gb")
+	requiredLabel := envOrDefault("REQUIRED_LABEL", "self-hosted")
+	listenAddr := envOrDefault("LISTEN_ADDR", ":8080")
+
+	var sshFingerprints []string
+	if fp := os.Getenv("DO_SSH_FINGERPRINTS"); fp != "" {
+		sshFingerprints = strings.Split(fp, ",")
+	}
+
+	githubApp := &gh.App{
+		AppID:          appID,
+		InstallationID: installID,
+		PrivateKey:     privateKey,
+	}
+
+	doClient, err := digitalocean.NewClient(digitalocean.Config{
+		Token:           doToken,
+		Region:          region,
+		Size:            size,
+		CloudInitPath:   cloudInitPath,
+		SSHFingerprints: sshFingerprints,
+	})
+	if err != nil {
+		log.Fatalf("Failed to create DO client: %v", err)
+	}
+
+	handler := webhook.NewHandler(webhook.Config{
+		WebhookSecret: webhookSecret,
+		GitHubApp:     githubApp,
+		DOClient:      doClient,
+		DOToken:       doToken,
+		RequiredLabel: requiredLabel,
+	})
+
+	mux := http.NewServeMux()
+	mux.Handle("/webhook", handler)
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
+	log.Printf("Webhook listener starting on %s", listenAddr)
+	if err := http.ListenAndServe(listenAddr, mux); err != nil {
+		log.Fatalf("Server failed: %v", err)
+	}
+}
+
+func mustEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		log.Fatalf("Required environment variable %s is not set", key)
+	}
+	return v
+}
+
+func envOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
