@@ -1,11 +1,13 @@
 module github.com/thomasvincent/github-runners-infra
 
-go 1.22
+go 1.24.0
+
+toolchain go1.24.12
 
 require (
 	github.com/digitalocean/godo v1.118.0
-	github.com/golang-jwt/jwt/v5 v5.2.1
-	golang.org/x/oauth2 v0.21.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
+	golang.org/x/oauth2 v0.34.0
 )
 
 require (
