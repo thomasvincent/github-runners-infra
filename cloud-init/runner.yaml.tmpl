@@ -7,7 +7,6 @@ users:
     groups: docker
 
 package_update: true
-package_upgrade: true
 
 packages:
   - docker.io
@@ -16,32 +15,27 @@ packages:
   - git
   - jq
   - unzip
-  - libffi-dev
-  - libssl-dev
-  - zlib1g-dev
 
 runcmd:
   - systemctl enable docker
   - systemctl start docker
 
-  # Install Ruby 3.3 via ruby-install
-  - curl -fsSL https://github.com/postmodern/ruby-install/releases/download/v0.9.3/ruby-install-0.9.3.tar.gz | tar -xz -C /tmp
-  - cd /tmp/ruby-install-0.9.3 && make install
-  - ruby-install --system ruby 3.3
-  - gem install bundler
-
-  # Install Chef Workstation
+  # Install Chef Workstation (includes Ruby, bundler, test-kitchen, etc.)
   - curl -fsSL https://omnitruck.chef.io/install.sh | bash -s -- -P chef-workstation
 
-  # Set up runner
-  - mkdir -p /home/runner/actions-runner
-  - cd /home/runner/actions-runner
-  - 'curl -fsSL -o actions-runner.tar.gz "https://github.com/actions/runner/releases/download/v{{.RunnerVersion}}/actions-runner-linux-x64-{{.RunnerVersion}}.tar.gz"'
-  - tar xzf actions-runner.tar.gz
-  - chown -R runner:runner /home/runner/actions-runner
+  # Set up GitHub Actions runner
+  - |
+    set -ex
+    mkdir -p /home/runner/actions-runner
+    cd /home/runner/actions-runner
+    curl -fsSL -o actions-runner.tar.gz "https://github.com/actions/runner/releases/download/v{{.RunnerVersion}}/actions-runner-linux-x64-{{.RunnerVersion}}.tar.gz"
+    tar xzf actions-runner.tar.gz
+    rm actions-runner.tar.gz
+    chown -R runner:runner /home/runner/actions-runner
 
   # Configure and start ephemeral runner
   - |
+    set -ex
     su - runner -c "cd /home/runner/actions-runner && \
       ./config.sh \
         --url https://github.com/{{.RunnerRepo}} \
