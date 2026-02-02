@@ -68,7 +68,7 @@ func NewHandler(cfg Config) *Handler {
 	}
 	version := cfg.RunnerVersion
 	if version == "" {
-		version = "2.321.0"
+		version = "2.331.0"
 	}
 	return &Handler{
 		webhookSecret: cfg.WebhookSecret,
