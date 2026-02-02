@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/thomasvincent/github-runners-infra/internal/digitalocean"
 	gh "github.com/thomasvincent/github-runners-infra/internal/github"
@@ -23,17 +24,16 @@ func main() {
 		log.Fatalf("Invalid APP_INSTALLATION_ID: %v", err)
 	}
 
-	var privateKey []byte
-	if keyPath := os.Getenv("APP_PRIVATE_KEY_FILE"); keyPath != "" {
-		var err2 error
-		privateKey, err2 = os.ReadFile(keyPath)
-		if err2 != nil {
-			log.Fatalf("Failed to read private key file %s: %v", keyPath, err2)
-		}
-	} else {
-		privateKey = []byte(mustEnv("APP_PRIVATE_KEY"))
+	// Only support file-based private key loading (#5)
+	keyPath := mustEnv("APP_PRIVATE_KEY_FILE")
+	privateKey, err := os.ReadFile(keyPath)
+	if err != nil {
+		log.Fatalf("Failed to read private key file %s: %v", keyPath, err)
 	}
+
 	webhookSecret := []byte(mustEnv("WEBHOOK_SECRET"))
+	callbackSecret := mustEnv("CALLBACK_SECRET")
+	callbackURL := mustEnv("CALLBACK_URL")
 	doToken := mustEnv("DIGITALOCEAN_TOKEN")
 
 	cloudInitPath := envOrDefault("CLOUD_INIT_PATH", "cloud-init/runner.yaml.tmpl")
@@ -65,22 +65,34 @@ func main() {
 	}
 
 	handler := webhook.NewHandler(webhook.Config{
-		WebhookSecret: webhookSecret,
-		GitHubApp:     githubApp,
-		DOClient:      doClient,
-		DOToken:       doToken,
-		RequiredLabel: requiredLabel,
+		WebhookSecret:  webhookSecret,
+		GitHubApp:      githubApp,
+		DOClient:       doClient,
+		DOToken:        doToken,
+		RequiredLabel:  requiredLabel,
+		CallbackSecret: callbackSecret,
+		CallbackURL:    callbackURL,
 	})
 
 	mux := http.NewServeMux()
 	mux.Handle("/webhook", handler)
+	mux.HandleFunc("/callback/destroy", handler.HandleDestroy)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})
 
+	// Server with timeouts (#4)
+	srv := &http.Server{
+		Addr:         listenAddr,
+		Handler:      mux,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
 	log.Printf("Webhook listener starting on %s", listenAddr)
-	if err := http.ListenAndServe(listenAddr, mux); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
 }

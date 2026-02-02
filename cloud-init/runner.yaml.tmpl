@@ -3,7 +3,6 @@
 users:
   - name: runner
     shell: /bin/bash
-    sudo: ALL=(ALL) NOPASSWD:ALL
     groups: docker
 
 package_update: true
@@ -36,22 +35,35 @@ runcmd:
     rm actions-runner.tar.gz
     chown -R runner:runner /home/runner/actions-runner
 
+  # Write runner token to file with restricted permissions (#2)
+  - |
+    set -ex
+    echo '{{.RunnerToken}}' > /home/runner/.runner-token
+    chmod 600 /home/runner/.runner-token
+    chown runner:runner /home/runner/.runner-token
+
   # Configure and start ephemeral runner
   - |
     set -ex
-    su - runner -c "cd /home/runner/actions-runner && \
+    su - runner -c '
+      cd /home/runner/actions-runner
+      TOKEN=$(cat /home/runner/.runner-token)
       ./config.sh \
         --url https://github.com/{{.RunnerRepo}} \
-        --token {{.RunnerToken}} \
+        --token "$TOKEN" \
         --name {{.RunnerName}} \
         --labels {{.RunnerLabels}} \
         --ephemeral \
-        --unattended && \
-      ./run.sh"
+        --unattended
+      shred -u /home/runner/.runner-token
+      ./run.sh
+    '
 
-  # Self-destruct after job completes
+  # Self-destruct: call back to webhook controller (#1)
   - |
     DROPLET_ID=$(curl -s http://169.254.169.254/metadata/v1/id)
-    curl -s -X DELETE \
-      -H "Authorization: Bearer {{.DOToken}}" \
-      "https://api.digitalocean.com/v2/droplets/${DROPLET_ID}"
+    curl -s -X POST \
+      -H "Content-Type: application/json" \
+      -H "X-Callback-Secret: {{.CallbackSecret}}" \
+      -d "{\"droplet_id\": ${DROPLET_ID}}" \
+      "{{.CallbackURL}}/callback/destroy"
