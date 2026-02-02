@@ -1,0 +1,9 @@
+[Unit]
+Description=Cleanup orphaned GitHub runner droplets
+
+[Service]
+Type=oneshot
+User=webhook
+Group=webhook
+EnvironmentFile=/etc/github-runners/env
+ExecStart=/usr/local/bin/cleanup
