@@ -13,18 +13,18 @@ import (
 )
 
 func main() {
-	appID, err := strconv.ParseInt(mustEnv("GITHUB_APP_ID"), 10, 64)
+	appID, err := strconv.ParseInt(mustEnv("APP_ID"), 10, 64)
 	if err != nil {
-		log.Fatalf("Invalid GITHUB_APP_ID: %v", err)
+		log.Fatalf("Invalid APP_ID: %v", err)
 	}
 
-	installID, err := strconv.ParseInt(mustEnv("GITHUB_INSTALLATION_ID"), 10, 64)
+	installID, err := strconv.ParseInt(mustEnv("APP_INSTALLATION_ID"), 10, 64)
 	if err != nil {
-		log.Fatalf("Invalid GITHUB_INSTALLATION_ID: %v", err)
+		log.Fatalf("Invalid APP_INSTALLATION_ID: %v", err)
 	}
 
-	privateKey := []byte(mustEnv("GITHUB_APP_PRIVATE_KEY"))
-	webhookSecret := []byte(mustEnv("GITHUB_WEBHOOK_SECRET"))
+	privateKey := []byte(mustEnv("APP_PRIVATE_KEY"))
+	webhookSecret := []byte(mustEnv("WEBHOOK_SECRET"))
 	doToken := mustEnv("DIGITALOCEAN_TOKEN")
 
 	cloudInitPath := envOrDefault("CLOUD_INIT_PATH", "cloud-init/runner.yaml.tmpl")
