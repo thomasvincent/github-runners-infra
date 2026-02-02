@@ -1,5 +1,15 @@
-runners.example.com {
+runners.pausatf.org {
     reverse_proxy localhost:8080
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "no-referrer"
+        -Server
+    }
+
     log {
         output file /var/log/caddy/webhook.log
     }
