@@ -3,7 +3,8 @@
 users:
   - name: runner
     shell: /bin/bash
-    groups: docker
+    groups: docker, sudo
+    sudo: ALL=(ALL) NOPASSWD:ALL
 
 package_update: true
 
@@ -14,6 +15,9 @@ packages:
   - git
   - jq
   - unzip
+  - libyaml-dev
+  - libssl-dev
+  - zlib1g-dev
 
 runcmd:
   - systemctl enable docker
