@@ -23,7 +23,16 @@ func main() {
 		log.Fatalf("Invalid APP_INSTALLATION_ID: %v", err)
 	}
 
-	privateKey := []byte(mustEnv("APP_PRIVATE_KEY"))
+	var privateKey []byte
+	if keyPath := os.Getenv("APP_PRIVATE_KEY_FILE"); keyPath != "" {
+		var err2 error
+		privateKey, err2 = os.ReadFile(keyPath)
+		if err2 != nil {
+			log.Fatalf("Failed to read private key file %s: %v", keyPath, err2)
+		}
+	} else {
+		privateKey = []byte(mustEnv("APP_PRIVATE_KEY"))
+	}
 	webhookSecret := []byte(mustEnv("WEBHOOK_SECRET"))
 	doToken := mustEnv("DIGITALOCEAN_TOKEN")
 
