@@ -4,11 +4,25 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
+
+// HTTPClient is a shared client with timeouts for all GitHub API calls. (#4)
+var HTTPClient = &http.Client{
+	Timeout: 30 * time.Second,
+	Transport: &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 20 * time.Second,
+	},
+}
 
 // App represents a GitHub App for authentication.
 type App struct {
@@ -55,7 +69,7 @@ func (a *App) InstallationToken() (string, error) {
 	req.Header.Set("Authorization", "Bearer "+jwtToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := HTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("request installation token: %w", err)
 	}

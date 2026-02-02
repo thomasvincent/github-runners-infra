@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -30,7 +31,7 @@ func (a *App) GenerateRunnerToken(org string) (string, error) {
 	req.Header.Set("Authorization", "token "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := HTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("request runner token: %w", err)
 	}
@@ -64,7 +65,7 @@ func (a *App) GenerateRepoRunnerToken(owner, repo string) (string, error) {
 	req.Header.Set("Authorization", "token "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := HTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("request runner token: %w", err)
 	}
@@ -84,8 +85,10 @@ func (a *App) GenerateRepoRunnerToken(owner, repo string) (string, error) {
 }
 
 // VerifyWebhookSignature checks the HMAC-SHA256 signature of a webhook payload.
-func VerifyWebhookSignature(payload []byte, signature string, secret []byte) bool {
+// Logs failed attempts with client IP for security monitoring. (#10)
+func VerifyWebhookSignature(payload []byte, signature string, secret []byte, clientIP string) bool {
 	if !strings.HasPrefix(signature, "sha256=") {
+		log.Printf("SECURITY: invalid signature format from %s", clientIP)
 		return false
 	}
 
@@ -93,5 +96,9 @@ func VerifyWebhookSignature(payload []byte, signature string, secret []byte) boo
 	mac.Write(payload)
 	expected := hex.EncodeToString(mac.Sum(nil))
 
-	return hmac.Equal([]byte(signature[7:]), []byte(expected))
+	valid := hmac.Equal([]byte(signature[7:]), []byte(expected))
+	if !valid {
+		log.Printf("SECURITY: signature mismatch from %s", clientIP)
+	}
+	return valid
 }
