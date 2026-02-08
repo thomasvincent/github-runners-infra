@@ -74,3 +74,17 @@ Keep lint/unit jobs on `ubuntu-latest`.
 ## Cleanup
 
 A watchdog runs every 15 minutes and deletes runner droplets older than 60 minutes to catch any orphaned instances.
+
+## Development
+
+```bash
+# Run tests
+go test ./...
+
+# Run locally (requires env vars)
+go run cmd/webhook/main.go
+```
+
+## License
+
+MIT
