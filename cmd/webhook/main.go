@@ -64,7 +64,7 @@ func main() {
 		log.Fatalf("Failed to create DO client: %v", err)
 	}
 
-	handler := webhook.NewHandler(webhook.Config{
+	handler, err := webhook.NewHandler(webhook.Config{
 		WebhookSecret:  webhookSecret,
 		GitHubApp:      githubApp,
 		DOClient:       doClient,
@@ -73,6 +73,9 @@ func main() {
 		CallbackSecret: callbackSecret,
 		CallbackURL:    callbackURL,
 	})
+	if err != nil {
+		log.Fatalf("Failed to create webhook handler: %v", err)
+	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/webhook", handler)

@@ -3,8 +3,8 @@
 users:
   - name: runner
     shell: /bin/bash
-    groups: docker, sudo
-    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: docker
+    sudo: runner ALL=(ALL) NOPASSWD: /usr/bin/docker
 
 package_update: true
 
@@ -23,8 +23,25 @@ runcmd:
   - systemctl enable docker
   - systemctl start docker
 
+  # Install AWS CLI (needed for SSM parameter retrieval)
+  - |
+    set -ex
+    curl -fsSL -o /tmp/awscli.zip "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+    unzip -q /tmp/awscli.zip -d /tmp
+    /tmp/aws/install
+    rm -rf /tmp/awscli.zip /tmp/aws
+
   # Install Chef Workstation (includes Ruby, bundler, test-kitchen, etc.)
-  - curl -fsSL https://omnitruck.chef.io/install.sh | bash -s -- -P chef-workstation
+  - |
+    set -ex
+    CHEF_INSTALLER_URL="https://omnitruck.chef.io/install.sh"
+    CHEF_INSTALLER="/tmp/chef-install.sh"
+    CHEF_CHECKSUM_FILE="/tmp/chef-install.sh.sha256"
+    curl -fsSL -o "$CHEF_INSTALLER" "$CHEF_INSTALLER_URL"
+    curl -fsSL -o "$CHEF_CHECKSUM_FILE" "${CHEF_INSTALLER_URL}.sha256"
+    sha256sum -c "$CHEF_CHECKSUM_FILE"
+    bash "$CHEF_INSTALLER" -P chef-workstation
+    rm -f "$CHEF_INSTALLER" "$CHEF_CHECKSUM_FILE"
 
   # Create tool cache directory for actions like setup-ruby
   - mkdir -p /opt/hostedtoolcache && chown runner:runner /opt/hostedtoolcache
@@ -32,11 +49,17 @@ runcmd:
   # Set up GitHub Actions runner
   - |
     set -ex
+    RUNNER_VERSION="{{.RunnerVersion}}"
+    RUNNER_TARBALL="actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
+    RUNNER_URL="https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${RUNNER_TARBALL}"
+    RUNNER_CHECKSUM_URL="https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${RUNNER_TARBALL}.sha256"
     mkdir -p /home/runner/actions-runner
     cd /home/runner/actions-runner
-    curl -fsSL -o actions-runner.tar.gz "https://github.com/actions/runner/releases/download/v{{.RunnerVersion}}/actions-runner-linux-x64-{{.RunnerVersion}}.tar.gz"
-    tar xzf actions-runner.tar.gz
-    rm actions-runner.tar.gz
+    curl -fsSL -o "${RUNNER_TARBALL}" "${RUNNER_URL}"
+    curl -fsSL -o "${RUNNER_TARBALL}.sha256" "${RUNNER_CHECKSUM_URL}"
+    sha256sum -c "${RUNNER_TARBALL}.sha256"
+    tar xzf "${RUNNER_TARBALL}"
+    rm -f "${RUNNER_TARBALL}" "${RUNNER_TARBALL}.sha256"
     chown -R runner:runner /home/runner/actions-runner
 
   # Write runner token to file with restricted permissions (#2)

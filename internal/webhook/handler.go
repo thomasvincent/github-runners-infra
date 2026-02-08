@@ -119,7 +119,28 @@ func (rl *repoRateLimiter) allow(repo string) bool {
 }
 
 // NewHandler creates a new webhook handler.
-func NewHandler(cfg Config) *Handler {
+// Returns an error if required configuration is missing or invalid.
+func NewHandler(cfg Config) (*Handler, error) {
+	// Validate required configuration
+	if len(cfg.WebhookSecret) == 0 {
+		return nil, fmt.Errorf("webhook secret is required")
+	}
+	if cfg.GitHubApp == nil {
+		return nil, fmt.Errorf("GitHub App configuration is required")
+	}
+	if cfg.DOClient == nil {
+		return nil, fmt.Errorf("DigitalOcean client is required")
+	}
+	if cfg.DOToken == "" {
+		return nil, fmt.Errorf("DigitalOcean token is required")
+	}
+	if cfg.CallbackSecret == "" {
+		return nil, fmt.Errorf("callback secret is required")
+	}
+	if cfg.CallbackURL == "" {
+		return nil, fmt.Errorf("callback URL is required")
+	}
+
 	label := cfg.RequiredLabel
 	if label == "" {
 		label = "self-hosted"
@@ -147,7 +168,7 @@ func NewHandler(cfg Config) *Handler {
 		callbackURL:    cfg.CallbackURL,
 		workerPool:     make(chan struct{}, maxConcurrent),
 		rateLimiter:    newRepoRateLimiter(maxPerRepo),
-	}
+	}, nil
 }
 
 // ServeHTTP handles webhook requests.
