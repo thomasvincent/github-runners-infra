@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/thomasvincent/github-runners-infra/internal/digitalocean"
 	gh "github.com/thomasvincent/github-runners-infra/internal/github"
 )
@@ -52,30 +56,33 @@ type RepoInfo struct {
 
 // Handler processes incoming GitHub webhooks.
 type Handler struct {
-	webhookSecret  []byte
-	githubApp      *gh.App
-	doClient       *digitalocean.Client
-	doToken        string
-	requiredLabel  string
-	runnerVersion  string
-	callbackSecret string
-	callbackURL    string
-	workerPool     chan struct{}       // concurrency limiter (#8)
-	rateLimiter    *repoRateLimiter   // per-repo rate limiter (#7)
+	webhookSecret         []byte
+	githubApp             *gh.App
+	doClient              *digitalocean.Client
+	doToken               string
+	requiredLabel         string
+	runnerVersion         string
+	callbackSecret        string
+	callbackSecretSSMPath string
+	callbackURL           string
+	workerPool            chan struct{}      // concurrency limiter (#8)
+	rateLimiter           *repoRateLimiter   // per-repo rate limiter (#7)
+	ssmClient             *ssm.Client
 }
 
 // Config holds handler configuration.
 type Config struct {
-	WebhookSecret    []byte
-	GitHubApp        *gh.App
-	DOClient         *digitalocean.Client
-	DOToken          string
-	RequiredLabel    string
-	RunnerVersion    string
-	CallbackSecret   string
-	CallbackURL      string
-	MaxConcurrent    int
-	MaxPerRepoPerMin int
+	WebhookSecret         []byte
+	GitHubApp             *gh.App
+	DOClient              *digitalocean.Client
+	DOToken               string
+	RequiredLabel         string
+	RunnerVersion         string
+	CallbackSecret        string
+	CallbackSecretSSMPath string
+	CallbackURL           string
+	MaxConcurrent         int
+	MaxPerRepoPerMin      int
 }
 
 // repoRateLimiter implements a simple per-repo token bucket. (#7)
@@ -136,17 +143,33 @@ func NewHandler(cfg Config) *Handler {
 	if maxPerRepo <= 0 {
 		maxPerRepo = 20
 	}
+
+	// Initialize AWS SSM client
+	awsCfg, err := config.LoadDefaultConfig(context.Background())
+	if err != nil {
+		log.Fatalf("Failed to load AWS config: %v", err)
+	}
+	ssmClient := ssm.NewFromConfig(awsCfg)
+
+	// Set SSM path for callback secret
+	ssmPath := cfg.CallbackSecretSSMPath
+	if ssmPath == "" {
+		ssmPath = "/github-runners/callback-secret"
+	}
+
 	return &Handler{
-		webhookSecret:  cfg.WebhookSecret,
-		githubApp:      cfg.GitHubApp,
-		doClient:       cfg.DOClient,
-		doToken:        cfg.DOToken,
-		requiredLabel:  label,
-		runnerVersion:  version,
-		callbackSecret: cfg.CallbackSecret,
-		callbackURL:    cfg.CallbackURL,
-		workerPool:     make(chan struct{}, maxConcurrent),
-		rateLimiter:    newRepoRateLimiter(maxPerRepo),
+		webhookSecret:         cfg.WebhookSecret,
+		githubApp:             cfg.GitHubApp,
+		doClient:              cfg.DOClient,
+		doToken:               cfg.DOToken,
+		requiredLabel:         label,
+		runnerVersion:         version,
+		callbackSecret:        cfg.CallbackSecret,
+		callbackSecretSSMPath: ssmPath,
+		callbackURL:           cfg.CallbackURL,
+		workerPool:            make(chan struct{}, maxConcurrent),
+		rateLimiter:           newRepoRateLimiter(maxPerRepo),
+		ssmClient:             ssmClient,
 	}
 }
 
@@ -257,6 +280,19 @@ func (h *Handler) provisionRunner(event WorkflowJobEvent) {
 		runnerName = runnerName[:63]
 	}
 
+	// Store runner token in SSM Parameter Store with short TTL
+	tokenParamName := fmt.Sprintf("/github-runners/tokens/%s", runnerName)
+	_, err = h.ssmClient.PutParameter(ctx, &ssm.PutParameterInput{
+		Name:      &tokenParamName,
+		Value:     &runnerToken,
+		Type:      types.ParameterTypeSecureString,
+		Overwrite: boolPtr(true),
+	})
+	if err != nil {
+		log.Printf("ERROR: failed to store runner token in SSM: %v", err)
+		return
+	}
+
 	// Validate and sanitize labels (#9)
 	var safeLabels []string
 	for _, l := range event.WorkflowJob.Labels {
@@ -274,15 +310,15 @@ func (h *Handler) provisionRunner(event WorkflowJobEvent) {
 	}
 
 	params := digitalocean.RunnerParams{
-		RunnerName:    runnerName,
-		RunnerToken:   runnerToken,
-		RunnerLabels:  labels,
-		RunnerOrg:     owner,
-		RunnerRepo:    repoFull,
-		DOToken:        h.doToken,
-		RunnerVersion:  h.runnerVersion,
-		CallbackSecret: h.callbackSecret,
-		CallbackURL:    h.callbackURL,
+		RunnerName:             runnerName,
+		RunnerTokenSSMParam:    tokenParamName,
+		RunnerLabels:           labels,
+		RunnerOrg:              owner,
+		RunnerRepo:             repoFull,
+		DOToken:                h.doToken,
+		RunnerVersion:          h.runnerVersion,
+		CallbackSecretSSMParam: h.callbackSecretSSMPath,
+		CallbackURL:            h.callbackURL,
 	}
 
 	droplet, err := h.doClient.CreateRunner(ctx, params)
@@ -303,7 +339,7 @@ func (h *Handler) HandleDestroy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	secret := r.Header.Get("X-Callback-Secret")
-	if secret == "" || secret != h.callbackSecret {
+	if secret == "" || subtle.ConstantTimeCompare([]byte(secret), []byte(h.callbackSecret)) != 1 {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -335,4 +371,9 @@ func (h *Handler) HandleDestroy(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Callback: deleted droplet %d", req.DropletID)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "deleted")
+}
+
+// boolPtr returns a pointer to a bool value
+func boolPtr(b bool) *bool {
+	return &b
 }
