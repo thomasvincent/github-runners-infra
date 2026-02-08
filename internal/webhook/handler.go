@@ -65,8 +65,8 @@ type Handler struct {
 	callbackSecret        string
 	callbackSecretSSMPath string
 	callbackURL           string
-	workerPool            chan struct{}      // concurrency limiter (#8)
-	rateLimiter           *repoRateLimiter   // per-repo rate limiter (#7)
+	workerPool            chan struct{}    // concurrency limiter (#8)
+	rateLimiter           *repoRateLimiter // per-repo rate limiter (#7)
 	ssmClient             *ssm.Client
 }
 
