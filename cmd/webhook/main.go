@@ -81,9 +81,7 @@ func main() {
 	mux.HandleFunc("/callback/destroy", handler.HandleDestroy)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("ok")); err != nil {
-			log.Printf("Failed to write health check response: %v", err)
-		}
+		_, _ = w.Write([]byte("ok"))
 	})
 
 	// Server with timeouts (#4)
