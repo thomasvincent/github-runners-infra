@@ -32,8 +32,6 @@ func main() {
 	}
 
 	webhookSecret := []byte(mustEnv("WEBHOOK_SECRET"))
-	callbackSecret := mustEnv("CALLBACK_SECRET")
-	callbackURL := mustEnv("CALLBACK_URL")
 	doToken := mustEnv("DIGITALOCEAN_TOKEN")
 
 	cloudInitPath := envOrDefault("CLOUD_INIT_PATH", "cloud-init/runner.yaml.tmpl")
@@ -65,18 +63,15 @@ func main() {
 	}
 
 	handler := webhook.NewHandler(webhook.Config{
-		WebhookSecret:         webhookSecret,
-		GitHubApp:             githubApp,
-		DOClient:              doClient,
-		DOToken:               doToken,
-		RequiredLabel:         requiredLabel,
-		CallbackSecret: callbackSecret,
-		CallbackURL:    callbackURL,
+		WebhookSecret: webhookSecret,
+		GitHubApp:     githubApp,
+		DOClient:      doClient,
+		DOToken:       doToken,
+		RequiredLabel: requiredLabel,
 	})
 
 	mux := http.NewServeMux()
 	mux.Handle("/webhook", handler)
-	mux.HandleFunc("/callback/destroy", handler.HandleDestroy)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))

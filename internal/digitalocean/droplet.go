@@ -75,7 +75,6 @@ type RunnerParams struct {
 	RunnerRepo    string
 	DOToken       string
 	RunnerVersion string
-	CallbackURL   string
 }
 
 // CreateRunner spins up an ephemeral runner droplet.
