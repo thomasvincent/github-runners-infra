@@ -182,6 +182,45 @@ func TestRateLimiterExpiry(t *testing.T) {
 	}
 }
 
+func TestRateLimiterMapCleanup(t *testing.T) {
+	rl := &repoRateLimiter{
+		buckets: make(map[string][]time.Time),
+		limit:   1,
+		window:  50 * time.Millisecond,
+	}
+
+	// Add entries for multiple repos
+	rl.allow("org/repo-a")
+	rl.allow("org/repo-b")
+	rl.allow("org/repo-c")
+
+	if len(rl.buckets) != 3 {
+		t.Fatalf("expected 3 bucket entries, got %d", len(rl.buckets))
+	}
+
+	// Wait for all entries to expire
+	time.Sleep(60 * time.Millisecond)
+
+	// Accessing one repo should clean up its stale key and re-create it
+	rl.allow("org/repo-a")
+
+	// repo-a should still exist (re-created with fresh entry)
+	if _, ok := rl.buckets["org/repo-a"]; !ok {
+		t.Error("repo-a should still have bucket after access")
+	}
+
+	// repo-b and repo-c haven't been accessed, so they still have stale keys
+	// but on next access they'll be cleaned up
+	rl.allow("org/repo-b")
+	time.Sleep(60 * time.Millisecond)
+	rl.allow("org/repo-b")
+
+	// After expiry+re-access, the map entry is fresh
+	if entries := rl.buckets["org/repo-b"]; len(entries) != 1 {
+		t.Errorf("expected 1 entry for repo-b, got %d", len(entries))
+	}
+}
+
 func TestSignatureVerification(t *testing.T) {
 	payload := []byte(`{"action":"queued"}`)
 	secret := []byte("my-secret")

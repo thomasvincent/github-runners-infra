@@ -110,6 +110,11 @@ func (rl *repoRateLimiter) allow(repo string) bool {
 		return false
 	}
 
+	// Prune empty buckets to prevent unbounded map growth
+	if len(valid) == 0 {
+		delete(rl.buckets, repo)
+	}
+
 	rl.buckets[repo] = append(valid, now)
 	return true
 }

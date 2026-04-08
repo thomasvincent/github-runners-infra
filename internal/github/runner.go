@@ -114,6 +114,11 @@ func (a *App) ListRepoRunners(owner, repo string) ([]Runner, error) {
 			return nil, fmt.Errorf("list repo runners: %w", err)
 		}
 
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("unexpected status %d listing repo runners", resp.StatusCode)
+		}
+
 		var result struct {
 			TotalCount int      `json:"total_count"`
 			Runners    []Runner `json:"runners"`
@@ -122,9 +127,6 @@ func (a *App) ListRepoRunners(owner, repo string) ([]Runner, error) {
 		_ = resp.Body.Close()
 		if err != nil {
 			return nil, err
-		}
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("unexpected status %d listing repo runners", resp.StatusCode)
 		}
 
 		all = append(all, result.Runners...)
@@ -208,6 +210,11 @@ func (a *App) ListInstallationRepos() ([][2]string, error) {
 			return nil, fmt.Errorf("list installation repos: %w", err)
 		}
 
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("unexpected status %d listing installation repos", resp.StatusCode)
+		}
+
 		var result struct {
 			TotalCount   int `json:"total_count"`
 			Repositories []struct {
@@ -221,9 +228,6 @@ func (a *App) ListInstallationRepos() ([][2]string, error) {
 		_ = resp.Body.Close()
 		if err != nil {
 			return nil, err
-		}
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("unexpected status %d listing installation repos", resp.StatusCode)
 		}
 
 		for _, r := range result.Repositories {

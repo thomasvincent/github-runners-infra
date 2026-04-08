@@ -67,7 +67,7 @@ runcmd:
 
   # Write runner token (passed via cloud-init params)
   - |
-    echo "{{.RunnerToken}}" > /home/runner/.runner-token
+    echo '{{.RunnerToken}}' > /home/runner/.runner-token
     chmod 600 /home/runner/.runner-token
     chown runner:runner /home/runner/.runner-token
 
@@ -78,10 +78,10 @@ runcmd:
       cd /home/runner/actions-runner
       TOKEN=$(cat /home/runner/.runner-token)
       ./config.sh \
-        --url https://github.com/{{.RunnerRepo}} \
+        --url "https://github.com/{{.RunnerRepo}}" \
         --token "$TOKEN" \
-        --name {{.RunnerName}} \
-        --labels {{.RunnerLabels}} \
+        --name "{{.RunnerName}}" \
+        --labels "{{.RunnerLabels}}" \
         --ephemeral \
         --unattended
       shred -u /home/runner/.runner-token

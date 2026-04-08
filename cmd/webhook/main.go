@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/thomasvincent/github-runners-infra/internal/digitalocean"
@@ -86,10 +89,26 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	log.Printf("Webhook listener starting on %s", listenAddr)
-	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("Server failed: %v", err)
+	// Graceful shutdown: finish in-flight provisioning on SIGTERM/SIGINT
+	shutdownCh := make(chan os.Signal, 1)
+	signal.Notify(shutdownCh, syscall.SIGTERM, syscall.SIGINT)
+
+	go func() {
+		log.Printf("Webhook listener starting on %s", listenAddr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed: %v", err)
+		}
+	}()
+
+	<-shutdownCh
+	log.Printf("Shutdown signal received, draining in-flight requests...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("Shutdown error: %v", err)
 	}
+	log.Printf("Server stopped")
 }
 
 func mustEnv(key string) string {
